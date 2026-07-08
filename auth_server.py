@@ -2,6 +2,7 @@ import socket
 import threading
 import time
 from registration_manager import generate_crypto_key
+from packet import send_packet, recv_packet
 
 from config import HOST, PORT, MAX_CLIENTS
 from key_manager import generate_auth_key, KEY_ROTATION_INTERVAL
@@ -16,12 +17,25 @@ from device_registry import (
     get_all_devices
 )
 
+from tx import tx_process
+
 connected_clients = {}          # in memory database
 lock = threading.Lock()         # mutex for modifying database
 
 
+def send_encrypted(conn, message, crypto_key):
+
+    send_packet(
+        conn,
+        message.encode()
+    )
+
 def send(conn, msg):
-    conn.sendall((msg + "\n").encode())
+
+    send_packet(
+        conn,
+        msg.encode()
+    )
 
 
 def print_connected_clients():
@@ -44,26 +58,22 @@ def handle_client(conn, addr):
     try:
         while True:
 
-            data = conn.recv(1024).decode()          # recieving data
+            packet = recv_packet(conn)
 
-            if not data:            # client disconnected
+            if packet is None:
                 break
 
-            buffer += data
+            msg = packet.decode()
 
-            while "\n" in buffer:
+            parts = msg.strip().split()
 
-                msg, buffer = buffer.split("\n", 1)
+            if not parts:
+                continue
 
-                parts = msg.strip().split()
+            command = parts[0].upper()
 
-                if not parts:
-                    continue
-
-                command = parts[0].upper()
-
-                # ---------------- REGISTER ----------------
-                if command == "REGISTER":
+            # ---------------- REGISTER ----------------
+            if command == "REGISTER":
 
                     if len(parts) != 2:
                         send(conn, "FAIL: REGISTER <device_name>")
@@ -99,8 +109,8 @@ def handle_client(conn, addr):
 
                     continue
 
-                # ---------------- LOGIN ----------------
-                if command == "LOGIN":
+            # ---------------- LOGIN ----------------
+            if command == "LOGIN":
 
                     if len(parts) != 2:         # must have 2 parts eg: LOGIN nathan
                         send(conn, "FAIL: LOGIN <device_name>")
@@ -124,10 +134,17 @@ def handle_client(conn, addr):
 
                         initial_key = generate_auth_key()
 
+                        device_info = get_device(requested_device)
+
+                        crypto_key = bytes.fromhex(
+                            device_info["crypto_key"]
+                        )
+
                         connected_clients[requested_device] = {
                             "socket": conn,
                             "last_seen": time.time(),
-                            "auth_key": initial_key
+                            "auth_key": initial_key,
+                            "crypto_key": crypto_key
                         }
 
                         device_name = requested_device
@@ -139,8 +156,8 @@ def handle_client(conn, addr):
                     print(f"[LOGIN] {device_name}")
                     print_connected_clients()
 
-                # ---------------- LOGOUT ----------------
-                elif command == "LOGOUT":
+            # ---------------- LOGOUT ----------------
+            elif command == "LOGOUT":
 
                     if device_name is None:
                         send(conn, "FAIL: Not logged in")
@@ -156,8 +173,8 @@ def handle_client(conn, addr):
 
                     send(conn, "SUCCESS")
 
-                # ---------------- UNKNOWN ----------------
-                else:
+            # ---------------- UNKNOWN ----------------
+            else:
                     send(conn, "FAIL: Unknown command")
 
     finally:
@@ -221,9 +238,10 @@ def key_rotation_worker():
 
                 try:
 
-                    send(
+                    send_encrypted(
                         info["socket"],
-                        f"KEY_UPDATE {new_key}"
+                        f"KEY_UPDATE {new_key}",
+                        info["crypto_key"]
                     )
 
                     print(

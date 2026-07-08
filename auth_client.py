@@ -2,6 +2,7 @@ import socket
 import threading
 
 from config import HOST, PORT
+from packet import send_packet, recv_packet
 
 current_auth_key = None
 
@@ -10,43 +11,34 @@ def receiver(sock):
 
     global current_auth_key
 
-    buffer = ""
-
     while True:
 
         try:
 
-            data = sock.recv(1024).decode()
+            packet = recv_packet(sock)
 
-            if not data:
+            if packet is None:
                 break
 
-            buffer += data
+            msg = packet.decode()
 
-            while "\n" in buffer:
+            if msg.startswith("KEY_UPDATE"):
 
-                msg, buffer = buffer.split("\n", 1)
+                _, key = msg.split()
 
-                msg = msg.strip()
+                current_auth_key = int(key)
 
-                if not msg:
-                    continue
+                print(
+                    f"\n[NEW AUTH KEY] {hex(current_auth_key)}"
+                )
 
-                if msg.startswith("KEY_UPDATE"):
+            else:
 
-                    _, key = msg.split()
+                print(f"\n{msg}")
 
-                    current_auth_key = int(key)
+        except Exception as e:
 
-                    print(
-                        f"\n[NEW AUTH KEY] {hex(current_auth_key)}"
-                    )
-
-                else:
-
-                    print(f"\n{msg}")
-
-        except:
+            print(f"\nConnection closed ({e})")
             break
 
 
@@ -78,7 +70,10 @@ def main():
         if cmd.upper() == "EXIT":
             break
 
-        sock.sendall((cmd + "\n").encode())
+        send_packet(
+            sock,
+            cmd.encode()
+        )
 
     sock.close()
 
