@@ -25,18 +25,26 @@ lock = threading.Lock()         # mutex for modifying database
 
 def send_encrypted(conn, message, crypto_key):
 
+    encrypted = tx_process(
+        message,
+        crypto_key
+    )
+
+    payload = b"\x01" + encrypted
+
     send_packet(
         conn,
-        message.encode()
+        payload
     )
 
 def send(conn, msg):
 
+    payload = b"\x00" + msg.encode()
+
     send_packet(
         conn,
-        msg.encode()
+        payload
     )
-
 
 def print_connected_clients():
     print("\n=== CONNECTED CLIENTS ===")
@@ -227,6 +235,9 @@ def key_rotation_worker():
         time.sleep(KEY_ROTATION_INTERVAL)
 
         with lock:
+
+            if not connected_clients:
+                continue
 
             print("\n[KEY ROTATION STARTED]\n")
 
