@@ -4,6 +4,8 @@ import time
 from registration_manager import generate_crypto_key
 from packet import send_packet, recv_packet
 
+from rx import rx_process
+
 from config import HOST, PORT, MAX_CLIENTS
 from key_manager import generate_auth_key, KEY_ROTATION_INTERVAL
 
@@ -61,7 +63,6 @@ def handle_client(conn, addr):
     print(f"[CONNECTED] {addr}")
 
     device_name = None          # nobody logged in
-    buffer = ""
 
     try:
         while True:
@@ -71,7 +72,30 @@ def handle_client(conn, addr):
             if packet is None:
                 break
 
-            msg = packet.decode()
+            packet_type = packet[0]
+
+            payload = packet[1:]
+
+            if packet_type == 0:
+
+                msg = payload.decode()
+
+            elif packet_type == 1:
+
+                if device_name is None:
+
+                    send(conn, "FAIL: Not authenticated")
+                    continue
+
+                msg = rx_process(
+                    payload,
+                    connected_clients[device_name]["crypto_key"]
+                )
+
+            else:
+
+                send(conn, "FAIL: Invalid packet type")
+                continue
 
             parts = msg.strip().split()
 

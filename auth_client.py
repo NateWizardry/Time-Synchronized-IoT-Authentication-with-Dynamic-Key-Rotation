@@ -5,6 +5,7 @@ from config import HOST, PORT
 from packet import send_packet, recv_packet
 
 from rx import rx_process
+from tx import tx_process
 from client_registry import get_key
 
 from client_registry import load_registry, save_key
@@ -84,7 +85,20 @@ def receiver(sock):
             print(f"\nConnection closed ({e})")
             break
 
+def send_encrypted(sock, message):
 
+    packet = tx_process(
+        message,
+        current_crypto_key
+    )
+
+    payload = b"\x01" + packet
+
+    send_packet(
+        sock,
+        payload
+    )
+    
 def main():
 
     global pending_registration_device
@@ -132,10 +146,28 @@ def main():
         if len(parts) == 2 and parts[0].upper() == "REGISTER":
             pending_registration_device = parts[1]
 
-        send_packet(
-            sock,
-            cmd.encode()
-        )
+        protected_commands = {
+            "LOGOUT",
+            "ALIVE_ACK"
+        }
+
+        command = parts[0].upper()
+
+        if current_crypto_key is not None and command in protected_commands:
+
+            send_encrypted(
+                sock,
+                cmd
+            )
+
+        else:
+
+            payload = b"\x00" + cmd.encode()
+
+            send_packet(
+                sock,
+                payload
+            )
 
     sock.close()
 

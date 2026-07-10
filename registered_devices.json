@@ -25,5 +25,11 @@
     },
     "Naa": {
         "crypto_key": "9f4e2c9e9d93f9cda90d7f8e91cd5ef9e9fbc18dcf14792e299eb606896216c6"
+    },
+    "Haley": {
+        "crypto_key": "6e17aca99281b42565b28c5197f9fa251d43cdbfc528a260f1e33cfcfa861ac6"
+    },
+    "Ryan": {
+        "crypto_key": "b7a091a8ce006f1f555e22500c2ec4da5c886cc4612d9d421434f57b52e4f1d1"
     }
 }
