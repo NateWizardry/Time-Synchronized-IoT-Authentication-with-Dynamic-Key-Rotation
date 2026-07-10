@@ -46,6 +46,15 @@ def receiver(sock):
 
                 print("Unknown packet type.")
                 continue
+            
+            if msg == "ALIVE?":
+
+                send_encrypted(
+                    sock,
+                    "ALIVE_ACK"
+                )
+
+                continue
 
             if msg.startswith("KEY_UPDATE"):
 

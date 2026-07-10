@@ -6,7 +6,7 @@ from packet import send_packet, recv_packet
 
 from rx import rx_process
 
-from config import HOST, PORT, MAX_CLIENTS
+from config import HOST, PORT, MAX_CLIENTS, HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT
 from key_manager import generate_auth_key, KEY_ROTATION_INTERVAL
 
 from device_registry import (
@@ -205,6 +205,16 @@ def handle_client(conn, addr):
 
                     send(conn, "SUCCESS")
 
+            # ---------------- HANDLE ALIVE_ACK ----------------
+
+            elif command == "ALIVE_ACK":
+                print(f"Received ALIVE_ACK from {device_name}")
+                with lock:
+
+                    if device_name in connected_clients:
+
+                        connected_clients[device_name]["last_seen"] = time.time()
+
             # ---------------- UNKNOWN ----------------
             else:
                     send(conn, "FAIL: Unknown command")
@@ -241,6 +251,13 @@ def start_server():
     ).start()
 
     print("[KEY MANAGER] Started")
+
+    threading.Thread(
+        target=heartbeat_worker,
+        daemon=True
+    ).start()
+
+    print("[HEARTBEAT] Started")
 
     while True:
 
@@ -289,6 +306,44 @@ def key_rotation_worker():
                     )
 
             print()
+
+def heartbeat_worker():
+
+    while True:
+
+        time.sleep(HEARTBEAT_INTERVAL)
+
+        with lock:
+
+            for device, info in list(connected_clients.items()):
+
+                if time.time() - info["last_seen"] > HEARTBEAT_TIMEOUT:
+
+                    print(
+                        f"{device} timed out."
+                    )
+
+                    try:
+                        info["socket"].close()
+                    except:
+                        pass
+
+                    connected_clients.pop(device)
+
+                    continue
+
+                try:
+
+                    print(f"Sending ALIVE? to {device}")
+
+                    send_encrypted(
+                        info["socket"],
+                        "ALIVE?",
+                        info["crypto_key"]
+                    )
+
+                except:
+                    pass
 
 if __name__ == "__main__":
     start_server()
