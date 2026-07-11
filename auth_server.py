@@ -24,7 +24,6 @@ from tx import tx_process
 connected_clients = {}          # in memory database
 lock = threading.Lock()         # mutex for modifying database
 
-
 def send_encrypted(conn, message, crypto_key):
 
     encrypted = tx_process(
@@ -102,7 +101,32 @@ def handle_client(conn, addr):
             if not parts:
                 continue
 
-            command = parts[0].upper()
+            if packet_type == 1:
+
+                if len(parts) < 2:
+                    send(conn, "FAIL: Invalid protected message")
+                    continue
+
+                try:
+                    received_auth_key = int(parts[0])
+
+                except ValueError:
+                    send(conn, "FAIL: Invalid authentication key")
+                    continue
+
+                expected_auth_key = connected_clients[device_name]["auth_key"]
+
+                if received_auth_key != expected_auth_key:
+
+                    send(conn, "FAIL: Invalid authentication key")
+                    continue
+
+                command = parts[1].upper()
+                parts = parts[1:]
+
+            else:
+
+                command = parts[0].upper()
 
             # ---------------- REGISTER ----------------
             if command == "REGISTER":

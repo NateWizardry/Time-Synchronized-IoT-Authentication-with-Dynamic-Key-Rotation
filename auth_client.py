@@ -96,8 +96,14 @@ def receiver(sock):
 
 def send_encrypted(sock, message):
 
+    global current_auth_key
+
+    protected_message = (
+        f"{current_auth_key} {message}"
+    )
+
     packet = tx_process(
-        message,
+        protected_message,
         current_crypto_key
     )
 
