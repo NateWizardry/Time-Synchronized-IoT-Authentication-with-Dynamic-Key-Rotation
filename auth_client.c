@@ -8,10 +8,24 @@
 #include <winsock2.h>
 #include <windows.h>
 
+#include "tx.h"
+#include "rx.h"
+#include "client_registry.h"
+
 #pragma comment(lib, "ws2_32.lib")
 
 #define HOST "127.0.0.1"
 #define PORT 5000
+
+#define KEY_SIZE 32
+
+uint32_t current_auth_key = 0;
+
+uint8_t current_crypto_key[KEY_SIZE];
+
+int crypto_key_loaded = 0;
+
+char pending_registration_device[100] = "";
 
 /*--------------------------------------------------
     Send exactly N bytes
@@ -139,23 +153,156 @@ DWORD WINAPI receiver_thread(LPVOID arg)
 
         uint8_t packet_type = packet[0];
 
+        char message[1024];
+
+        memset(
+            message,
+            0,
+            sizeof(message)
+        );
+
+
+        /* ---------------------------
+           Plaintext packet
+        --------------------------- */
+
         if (packet_type == 0)
         {
-            char *message = (char *)&packet[1];
-
-            printf("\n%s\n", message);
+            strcpy(
+                message,
+                (char *)&packet[1]
+            );
         }
+
+
+        /* ---------------------------
+           Encrypted packet
+        --------------------------- */
+
         else if (packet_type == 1)
         {
-            printf("\n[Encrypted packet received]\n");
+            if (!crypto_key_loaded)
+            {
+                printf("\n[ERROR] No crypto key loaded\n");
+
+                free(packet);
+                continue;
+            }
+
+
+            if (
+                rx_process(
+                    &packet[1],
+                    length - 1,
+                    current_crypto_key,
+                    message
+                ) != 0
+            )
+            {
+                printf("\n[DECRYPT FAILED]\n");
+
+                free(packet);
+                continue;
+            }
         }
+
+
         else
         {
-            printf("\n[Unknown packet type: %u]\n", packet_type);
+            printf(
+                "\n[UNKNOWN PACKET TYPE %u]\n",
+                packet_type
+            );
+
+            free(packet);
+            continue;
         }
+
+
+        /* ---------------------------
+           Process message
+        --------------------------- */
+
+        if (strncmp(message, "KEY_UPDATE", 10) == 0)
+        {
+            unsigned int key;
+
+            sscanf(
+                message,
+                "KEY_UPDATE %u",
+                &key
+            );
+
+            current_auth_key = key;
+
+
+            printf(
+                "\n[NEW AUTH KEY] 0x%08X\n",
+                current_auth_key
+            );
+        }
+
+
+        else if (strcmp(message, "ALIVE?") == 0)
+        {
+            printf("\n[SERVER] ALIVE?\n");
+
+            // heartbeat response will be added next
+        }
+
+
+        else
+        {
+            printf(
+                "\n%s\n",
+                message
+            );
+
+
+            if (
+                strncmp(
+                    message,
+                    "REGISTERED",
+                    10
+                ) == 0
+            )
+            {
+                char key_hex[65];
+
+                sscanf(
+                    message,
+                    "REGISTERED %64s",
+                    key_hex
+                );
+
+
+                if (
+                    strlen(
+                        pending_registration_device
+                    ) > 0
+                )
+                {
+                    save_key(
+                        pending_registration_device,
+                        key_hex
+                    );
+
+
+                    printf(
+                        "[CLIENT] ChaCha key stored for %s\n",
+                        pending_registration_device
+                    );
+
+
+                    pending_registration_device[0] = '\0';
+                }
+            }
+        }
+
 
         free(packet);
     }
+
 
     printf("\n[SERVER DISCONNECTED]\n");
 
