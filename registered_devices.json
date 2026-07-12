@@ -40,5 +40,8 @@
     },
     "RUTH": {
         "crypto_key": "8c9755be506779bced117a119f5922869f3c9889051ae074c3e3d23580c3639b"
+    },
+    "CClient": {
+        "crypto_key": "2d8820c48c4da26e487a23787a0c758f15e16bec6cb844d497a5018b7cc91e0c"
     }
 }
