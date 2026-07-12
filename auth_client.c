@@ -311,7 +311,10 @@ DWORD WINAPI receiver_thread(LPVOID arg)
         {
             printf("\n[SERVER] ALIVE?\n");
 
-            // heartbeat response will be added next
+            send_encrypted(
+                sock,
+                "ALIVE_ACK"
+            );
         }
 
 
@@ -424,8 +427,13 @@ int main()
     );
 
     printf("CONNECTED\n");
+    printf("REGISTER <device>\n");
+    printf("LOGIN <device>\n");
+    printf("LOGOUT\n");
+    printf("EXIT\n");
 
     while (1)
+
     {
         char input[256];
 
