@@ -126,6 +126,67 @@ uint8_t *recv_packet(
     return buffer;
 }
 
+void send_encrypted(
+    SOCKET sock,
+    const char *message
+)
+{
+    if (!crypto_key_loaded)
+    {
+        printf("[ERROR] No ChaCha key loaded\n");
+        return;
+    }
+
+
+    char protected_message[512];
+
+
+    sprintf(
+        protected_message,
+        "%u %s",
+        current_auth_key,
+        message
+    );
+
+
+    uint8_t encrypted[1024];
+
+    unsigned long long encrypted_len;
+
+
+    if (
+        tx_process(
+            protected_message,
+            current_crypto_key,
+            encrypted,
+            &encrypted_len
+        ) != 0
+    )
+    {
+        printf("[ENCRYPT FAILED]\n");
+        return;
+    }
+
+
+    uint8_t packet[1025];
+
+    packet[0] = 1;
+
+
+    memcpy(
+        &packet[1],
+        encrypted,
+        encrypted_len
+    );
+
+
+    send_packet(
+        sock,
+        packet,
+        encrypted_len + 1
+    );
+}
+
 /*--------------------------------------------------
     Receiver Thread
 --------------------------------------------------*/
@@ -168,10 +229,13 @@ DWORD WINAPI receiver_thread(LPVOID arg)
 
         if (packet_type == 0)
         {
-            strcpy(
-                message,
-                (char *)&packet[1]
-            );
+            memcpy(
+                    message,
+                    &packet[1],
+                    length - 1
+                );
+
+                message[length - 1] = '\0';
         }
 
 
@@ -348,6 +412,8 @@ int main()
         return 1;
     }
 
+    load_registry();
+
     CreateThread(
         NULL,
         0,
@@ -376,20 +442,103 @@ int main()
 
         input[strcspn(input, "\n")] = '\0';
 
-        uint8_t payload[257];
+        char command[50];
+        char argument[100];
 
-        payload[0] = 0;
+        command[0] = '\0';
+        argument[0] = '\0';
 
-        strcpy(
-            (char *)&payload[1],
-            input
+
+        sscanf(
+            input,
+            "%49s %99s",
+            command,
+            argument
         );
 
-        send_packet(
-            sock,
-            payload,
-            1 + strlen(input)
-        );
+
+        /* --------------------------
+        REGISTER
+        -------------------------- */
+
+        if (strcmp(command, "REGISTER") == 0)
+        {
+            strcpy(
+                pending_registration_device,
+                argument
+            );
+        }
+
+        /* --------------------------
+        LOGIN
+        -------------------------- */
+
+        if (strcmp(command, "LOGIN") == 0)
+        {
+            if (
+                get_key(
+                    argument,
+                    current_crypto_key
+                )
+            )
+            {
+                crypto_key_loaded = 1;
+
+                printf(
+                    "[CLIENT] ChaCha key loaded for %s\n",
+                    argument
+                );
+            }
+
+            else
+            {
+                printf(
+                    "[CLIENT] No key found for %s\n",
+                    argument
+                );
+            }
+        }
+
+
+        /* --------------------------
+        Protected commands
+        -------------------------- */
+
+        if (
+            strcmp(command, "LOGOUT") == 0 ||
+            strcmp(command, "ALIVE_ACK") == 0
+        )
+        {
+            send_encrypted(
+                sock,
+                input
+            );
+        }
+
+
+        /* --------------------------
+        Plaintext commands
+        -------------------------- */
+
+        else
+        {
+            uint8_t payload[512];
+
+            payload[0] = 0;
+
+
+            strcpy(
+                (char *)&payload[1],
+                input
+            );
+
+
+            send_packet(
+                sock,
+                payload,
+                1 + strlen(input)
+            );
+        }
     }
 
     closesocket(sock);
